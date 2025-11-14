@@ -53,7 +53,7 @@ async def ping():
 
     await app.state.redis.set(CACHE_KEY, str(count))
 
-    return "pong"
+    return 'pong'
 
 
 @app.get("/visits")
