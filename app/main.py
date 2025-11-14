@@ -10,10 +10,23 @@ from fastapi.responses import PlainTextResponse
 DATABASE_URL = os.getenv("DATABASE_URL")
 REDIS_URL = os.getenv("REDIS_URL", "redis://cache:6379/0")
 CACHE_KEY = "visits_count"
+DEV_VISITS_PLACEHOLDER = -1
+
+
+def is_dev_mode() -> bool:
+    return os.getenv("APP_ENV", "prod").lower() == "dev"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.is_dev_mode = is_dev_mode()
+
+    if app.state.is_dev_mode:
+        app.state.db_pool = None
+        app.state.redis = None
+        yield
+        return
+
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL environment variable is not set")
 
@@ -45,6 +58,9 @@ app = FastAPI(title="Ping Pong API", lifespan=lifespan)
 
 @app.get("/ping")
 async def ping():
+    if getattr(app.state, "is_dev_mode", False):
+        return PlainTextResponse("pong")
+
     try:
         async with app.state.db_pool.acquire() as conn:
             await conn.execute("INSERT INTO visits DEFAULT VALUES;")
@@ -59,6 +75,9 @@ async def ping():
 
 @app.get("/visits")
 async def get_visits():
+    if getattr(app.state, "is_dev_mode", False):
+        return DEV_VISITS_PLACEHOLDER
+
     cached_value = await app.state.redis.get(CACHE_KEY)
     if cached_value is not None:
         return int(cached_value)
